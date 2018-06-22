@@ -1,4 +1,4 @@
-from typing import List, Optional, Union, Any, Dict, Tuple, cast, overload
+from typing import List, Optional, Union, Any, Dict, cast, overload
 from mypy_extensions import TypedDict
 from datetime import datetime
 from pathlib import Path
@@ -26,23 +26,33 @@ class ClipRecord(TypedDict):
 
 
 @attr.s(slots=True, auto_attribs=True)
+class GuildVoiceEntry(object):
+    channel: discord.VoiceChannel
+    path: str
+    requester: discord.User
+
+
+@attr.s(slots=True, auto_attribs=True)
 class GuildVoiceState(object):
     board: 'SoundBoard'
     bot: 'Krazon'
 
-    next_clip: asyncio.Event = attr.ib(init=False)
     voice_client: Optional[discord.VoiceClient] = attr.ib(init=False)
-    clips: List[Tuple[discord.VoiceChannel, str]] = attr.ib(init=False)
     audio_player: asyncio.Task = attr.ib(init=False)
+
+    next_clip: asyncio.Event = attr.ib(init=False)
+    clips: List[GuildVoiceEntry] = attr.ib(init=False)
+    current_clip: Optional[GuildVoiceEntry] = attr.ib(init=False)
 
     def __attrs_post_init__(self) -> None:
         self.__reinitialize()
 
     def __reinitialize(self) -> None:
-        self.next_clip = asyncio.Event(loop=self.bot.loop)
         self.voice_client = None
-        self.clips = []
         self.audio_player = self.bot.loop.create_task(self.__audio_player_task())
+        self.next_clip = asyncio.Event(loop=self.bot.loop)
+        self.clips = []
+        self.current_clip = None
 
     @property
     def is_playing(self) -> bool:
@@ -53,14 +63,14 @@ class GuildVoiceState(object):
 
     async def __audio_player_task(self) -> None:
         while await self.next_clip.wait() and len(self.clips) > 0:
-            channel, path = self.clips.pop(0)
+            entry = self.current_clip = self.clips.pop(0)
 
             if self.voice_client is None:
-                self.voice_client = await channel.connect()
-            elif channel is not self.voice_client.channel:
-                    await self.voice_client.move_to(channel)
+                self.voice_client = await entry.channel.connect()
+            elif entry.channel is not self.voice_client.channel:
+                await self.voice_client.move_to(entry.channel)
 
-            source = discord.FFmpegPCMAudio(path)
+            source = discord.FFmpegPCMAudio(entry.path)
 
             self.voice_client.play(source, after=self.__play_next_clip)
             self.next_clip.clear()
@@ -71,11 +81,18 @@ class GuildVoiceState(object):
     def __play_next_clip(self, error: Optional[Exception]) -> None:
         self.bot.loop.call_soon_threadsafe(self.next_clip.set)
 
-    def add_to_queue(self, channel: discord.VoiceChannel, path: str) -> None:
-        self.clips.append((channel, path))
+    def add_to_queue(self, channel: discord.VoiceChannel, path: str, user: discord.User) -> None:
+        self.clips.append(GuildVoiceEntry(channel=channel, path=path, requester=user))
 
         if not self.is_playing:
             self.next_clip.set()
+
+    def skip(self) -> None:
+        if len(self.clips) == 0 and self.current_clip is None:
+            return
+
+        if self.voice_client is not None:
+            self.voice_client.stop()
 
 
 class Context(DbContext, EmbedContext):
@@ -91,7 +108,7 @@ class Context(DbContext, EmbedContext):
                          timestamp: Optional[datetime] = None,
                          fields: Optional[List[FieldData]] = None,
                          tts: bool = False, file: Optional[object] = None,
-                         files: Optional[List[object]] = None, delete_after: Optional[float] = None,
+                         files: Optional[List[object]] = None, delete_after: Optional[float] = 5,
                          nonce: Optional[int] = None) -> discord.Message:
         self.has_error = True
         return await self.send_embed(description, color=discord.Color.red(), title=title, footer=footer,
@@ -133,8 +150,22 @@ class FilenameExists(commands.CommandError):
                          'Rename the file and try again.')
 
 
-async def get_clip_by_name(ctx: Context, clip_name: str) -> Optional[ClipRecord]:
-    return await ctx.select_one(clip_name, str(ctx.author.id), table='clips',
+class MustBeConnected(commands.CommandError):
+    def __init__(self) -> None:
+        super().__init__(message='You must be connected to a voice channel to play a clip')
+
+
+class TooManyMembers(commands.CommandError):
+    def __init__(self) -> None:
+        super().__init__(message='Cannot connect to voice channel to play the clip: too many members connected')
+
+
+async def get_clip_by_name(ctx: Context, clip_name: str, *,
+                           user: Optional[Union[discord.User, discord.Member]] = None) -> Optional[ClipRecord]:
+    if user is None:
+        user = ctx.author
+
+    return await ctx.select_one(clip_name, str(user.id), table='clips',
                                 where=['name = $1', 'member_id = $2'])
 
 
@@ -158,6 +189,20 @@ class Clip(object):
         return cls(id=clip['id'], name=clip['name'], member_id=int(clip['member_id']), filename=clip['filename'])
 
 
+def play_checks(ctx: commands.Context) -> bool:
+    author = cast(discord.Member, ctx.author)
+
+    if author.voice is None or author.voice.channel is None:
+        raise MustBeConnected()
+
+    channel = author.voice.channel
+
+    if channel.user_limit == len(channel.members):
+        raise TooManyMembers()
+
+    return True
+
+
 @attr.s(slots=True, auto_attribs=True)
 class SoundBoard(object):
     bot: 'Krazon'
@@ -173,8 +218,9 @@ class SoundBoard(object):
     async def __error(self, ctx: Context, error: Exception) -> None:
         await ctx.message.delete()
 
-        if isinstance(error, ClipNotFound) or isinstance(error, FilenameExists):
-            await ctx.send_error(error.args[0], delete_after=5)
+        if isinstance(error, ClipNotFound) or isinstance(error, FilenameExists) or \
+                isinstance(error, MustBeConnected) or isinstance(error, TooManyMembers):
+            await ctx.send_error(error.args[0])
         elif isinstance(error, commands.BadArgument) or isinstance(error, commands.MissingRequiredArgument):
             pages = await ctx.bot.formatter.format_help_for(ctx, ctx.command)
 
@@ -197,35 +243,36 @@ class SoundBoard(object):
         return state
 
     @commands.command()
+    @commands.check(play_checks)
     @commands.guild_only()
     async def play(self, ctx: GuildContext, clip: Clip) -> None:
         state = self.get_voice_state(ctx.guild)
-
-        if ctx.author.voice is None or ctx.author.voice.channel is None:
-            await ctx.send_error('You must be connected to a voice channel to play a clip', delete_after=5)
-            return
-
         channel = ctx.author.voice.channel
 
-        if channel.user_limit == len(channel.members):
-            await ctx.send_error('Cannot connect to voice channel to play the clip: too many members connected',
-                                 delete_after=5)
+        state.add_to_queue(channel, str(clip.get_path(self.storage_path)), cast(discord.User, ctx.author))
+
+    @commands.command()
+    @commands.guild_only()
+    async def skip(self, ctx: GuildContext) -> None:
+        state = self.get_voice_state(ctx.guild)
+
+        if ctx.author != ctx.guild.owner and (state.current_clip is None or ctx.author != state.current_clip.requester):
+            await ctx.send_error('You are not allowed to skip the clip')
             return
 
-        path = self.storage_path / str(ctx.author.id) / clip.filename
-
-        state.add_to_queue(channel, str(path))
+        state.skip()
 
     @commands.command()
     async def list(self, ctx: Context) -> None:
         clips: List[ClipRecord] = await ctx.select_all(str(ctx.author.id), table='clips',
-                                                       where=['member_id = $1'])
+                                                       where=['member_id = $1'],
+                                                       order_by='name')
 
         if len(clips) > 0:
             paginator = EmbedPaginator()
 
             for clip in clips:
-                paginator.add_line(f'{clip["name"]}: {clip["filename"]}')
+                paginator.add_line(f'`{clip["name"]}`: {clip["filename"]}')
 
             for page in paginator:
                 await ctx.send_response(page, title=f'Clips for {ctx.author.display_name}')
@@ -237,14 +284,19 @@ class SoundBoard(object):
         clip: Optional[ClipRecord] = await get_clip_by_name(ctx, clip_name)
 
         if clip is not None:
-            await ctx.send_error(f'A clip already exists with name `{clip_name}`', delete_after=5)
+            await ctx.send_error(f'A clip already exists with name `{clip_name}`')
             return
 
         if len(ctx.message.attachments) == 0:
-            await ctx.send_error('You must attach a sound file to the message', delete_after=5)
+            await ctx.send_error('You must attach a sound file to the message')
             return
 
         attachment = ctx.message.attachments[0]
+
+        if attachment.size > 2621440:
+            await ctx.send_error('There is a limit of 2.5MB on clip files')
+            return
+
         await self.__add_clip(ctx, clip_name=clip_name, attachment=attachment)
         await ctx.send_response(f'Successfully added `{clip_name}`', delete_after=5)
 
@@ -262,7 +314,7 @@ class SoundBoard(object):
     async def rename(self, ctx: Context, clip: Clip, new_name: str) -> None:
         if await ctx.select_one(new_name, str(ctx.author.id), table='clips',
                                 where=['name = $1', 'member_id = $2']) is not None:
-            await ctx.send_error(f'A clip already has the name `{new_name}`', delete_after=5)
+            await ctx.send_error(f'A clip already has the name `{new_name}`')
             return
 
         await ctx.update(clip.id, new_name, table='clips',
@@ -277,10 +329,10 @@ class SoundBoard(object):
         if clip_name is None:
             clip_name = clip.name
 
-        clip_record: Optional[ClipRecord] = await get_clip_by_name(ctx, clip_name)
+        clip_record: Optional[ClipRecord] = await get_clip_by_name(ctx, clip_name, user=user)
 
         if clip_record is not None:
-            await ctx.send_error(f'A clip already exists with name `{clip_name}`', delete_after=5)
+            await ctx.send_error(f'A clip already exists with name `{clip_name}`')
             return
 
         await self.__add_clip(ctx, user=user, clip=clip, clip_name=clip_name)
