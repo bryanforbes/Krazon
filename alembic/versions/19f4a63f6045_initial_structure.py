@@ -21,10 +21,12 @@ def upgrade():
                     sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
                     sa.Column('name', sa.String),
                     sa.Column('member_id', sa.String),
+                    sa.Column('hash', sa.String),
                     sa.Column('filename', sa.String))
 
     op.create_index('clips_member_id_idx', 'clips', ['member_id'])
-    op.create_index('clips_member_id_name_idx', 'clips', ['member_id', 'name'])
+    op.create_index('clips_member_id_name_idx', 'clips', ['member_id', 'name'], unique=True)
+    op.create_index('clips_hash_idx', 'clips', ['hash'])
 
 
 def downgrade():

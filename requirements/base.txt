@@ -2,9 +2,9 @@ aiodns==1.1.1
 aiohttp>=3.3.0,<3.4.0
 alembic==0.9.9
 async-timeout==3.0.0
-git+https://github.com/BryanForbes/botus_receptus@b6ec78e8542d4b4e7f520d756ca23984007238ca#egg=botus_receptus[db]
+git+https://github.com/BryanForbes/botus_receptus@74cf1fcf489ec9b30c8804667bb321bad2e31509#egg=botus_receptus[db]
 cchardet==2.1.1
-git+https://github.com/Rapptz/discord.py@607771c4f49a12d984d782883a580e7332359a10#egg=discord.py[voice]
+git+https://github.com/Rapptz/discord.py@ec3435b22418d36a01c04d2098a70d71844a4c87#egg=discord.py
 mypy-extensions==0.3.0
 psycopg2==2.7.5
 SQLAlchemy==1.2.8
