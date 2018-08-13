@@ -119,7 +119,7 @@ def play_checks(ctx: commands.Context) -> bool:
 
     channel = author.voice.channel
 
-    if channel.user_limit == len(channel.members):
+    if isinstance(channel, discord.VoiceChannel) and channel.user_limit == len(channel.members):
         raise TooManyMembers()
 
     return True
@@ -169,7 +169,7 @@ class SoundBoard(object):
     @commands.guild_only()
     async def play(self, ctx: GuildContext, clip: Clip) -> None:
         state = self.get_voice_state(ctx.guild)
-        channel = ctx.author.voice.channel
+        channel = cast(discord.VoiceChannel, cast(discord.VoiceState, ctx.author.voice).channel)
 
         state.add_to_queue(channel, str(clip.get_path(self.storage_path)), cast(discord.User, ctx.author))
 

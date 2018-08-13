@@ -26,8 +26,8 @@ class Context(DbContext, EmbedContext):
                          image: Optional[str] = None,
                          timestamp: Optional[datetime] = None,
                          fields: Optional[List[FieldData]] = None,
-                         tts: bool = False, file: Optional[object] = None,
-                         files: Optional[List[object]] = None, delete_after: Optional[float] = 5,
+                         tts: bool = False, file: Optional[discord.File] = None,
+                         files: Optional[List[discord.File]] = None, delete_after: Optional[float] = 5,
                          nonce: Optional[int] = None) -> discord.Message:
         return await self.send_embed(description, color=discord.Color.red(), title=title, footer=footer,
                                      thumbnail=thumbnail, author=author, image=image, timestamp=timestamp,
@@ -43,8 +43,8 @@ class Context(DbContext, EmbedContext):
                             image: Optional[str] = None,
                             timestamp: Optional[datetime] = None,
                             fields: Optional[List[FieldData]] = None,
-                            tts: bool = False, file: Optional[object] = None,
-                            files: Optional[List[object]] = None, delete_after: Optional[float] = None,
+                            tts: bool = False, file: Optional[discord.File] = None,
+                            files: Optional[List[discord.File]] = None, delete_after: Optional[float] = None,
                             nonce: Optional[int] = None) -> discord.Message:
         return await self.send_embed(description, color=color, title=title, footer=footer,
                                      thumbnail=thumbnail, author=author, image=image, timestamp=timestamp,
