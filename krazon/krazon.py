@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Optional, Any, Dict, cast
 from pathlib import Path
 from io import BytesIO
