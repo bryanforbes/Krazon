@@ -99,7 +99,7 @@
                 "db"
             ],
             "git": "https://github.com/bryanforbes/botus_receptus",
-            "ref": "177518c47c9ef2b637777feb13e8f7c8dafa394f"
+            "ref": "552ce85dcf866c2358c4964364822ddbe09be5c4"
         },
         "cchardet": {
             "hashes": [
