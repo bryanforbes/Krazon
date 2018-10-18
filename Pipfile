@@ -5,13 +5,12 @@ name = "pypi"
 
 [packages]
 "botus_receptus" = {ref = "master", git = "https://github.com/bryanforbes/botus_receptus", editable = true, extras = ["db"]}
-"discord.py" = {ref = "8c18bf868e47740e8ae1c2fb2741b3482412efab", git = "https://github.com/bryanforbes/discord.py", editable = true, extras = ["typings"]}
+"discord.py" = {ref = "8c18bf868e47740e8ae1c2fb2741b3482412efab", git = "https://github.com/bryanforbes/discord.py", editable = true, extras = ["typings", "voice"]}
 aiodns = "*"
 alembic = "*"
 cchardet = "*"
 uvloop = "*"
 psycopg2 = "*"
-pynacl = "*"
 
 [dev-packages]
 flake8 = "*"
