@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Any, Dict, cast
+from typing import TYPE_CHECKING, Any, Optional, Union, Dict, List, Type, TypeVar, cast
 from pathlib import Path
 from io import BytesIO
 from hashlib import sha256
@@ -10,8 +10,10 @@ import discord
 import attr
 import asyncio
 
+from gino import Gino
+from gino.crud import CRUDModel
 from discord.ext import commands
-from botus_receptus.db import Bot
+from botus_receptus import Bot
 from botus_receptus.formatting import EmbedPaginator
 
 from .exceptions import ClipNotFound, FilenameExists, MustBeConnected, TooManyMembers
@@ -19,6 +21,57 @@ from .context import Context, GuildContext
 
 
 log = logging.getLogger(__name__)
+db = Gino()
+
+if TYPE_CHECKING:
+    Base = CRUDModel
+else:
+    Base = db.Model
+
+_C = TypeVar('_C', bound=Clip)  # noqa: F821
+
+
+class Clip(Base):
+    __tablename__ = 'clips'
+
+    id = db.Column(db.Integer(), primary_key=True, autoincrement=True)
+    name = db.Column(db.String())
+    member_id = db.Column(db.String())
+    hash = db.Column(db.String())
+    filename = db.Column(db.String())
+
+    _idx1 = db.Index('clips_member_id_idx', 'member_id')
+    _idx2 = db.Index('clips_member_id_name_idx', 'member_id', 'name', unique=True)
+    _idx3 = db.Index('clips_hash_idx', 'hash')
+
+    def get_path(self, storage_path: Path) -> Path:
+        return storage_path / self.hash
+
+    @classmethod
+    async def get_by_name(cls: Type[_C], clip_name: str, user: Union[discord.User, discord.Member]) -> Optional[_C]:
+        return await cls.query \
+            .where(Clip.name == clip_name) \
+            .where(Clip.member_id == str(user.id)) \
+            .gino.first()
+
+    @classmethod
+    async def get_by_hash(cls: Type[_C], clip_hash: str) -> Optional[_C]:
+        return await cls.query \
+            .where(Clip.hash == clip_hash) \
+            .gino.first()
+
+    @classmethod
+    async def get_for_user(cls: Type[_C], user: Union[discord.User, discord.Member]) -> List[_C]:
+        return await cls.query.where(Clip.member_id == str(user.id)).gino.all()
+
+    @classmethod
+    async def convert(cls: Type[_C], ctx: Context, argument: str) -> _C:
+        clip = await cls.get_by_name(argument, ctx.author)
+
+        if clip is None:
+            raise ClipNotFound(argument)
+
+        return clip
 
 
 @attr.s(slots=True, auto_attribs=True)
@@ -89,28 +142,6 @@ class GuildVoiceState(object):
 
         if self.voice_client is not None:
             self.voice_client.stop()
-
-
-@attr.s(slots=True, auto_attribs=True)
-class Clip(object):
-    id: int
-    name: str
-    member_id: int
-    hash: str
-    filename: str
-
-    def get_path(self, storage_path: Path) -> Path:
-        return storage_path / self.hash
-
-    @classmethod
-    async def convert(cls, ctx: Context, argument: str) -> 'Clip':
-        clip = await ctx.get_clip_by_name(argument)
-
-        if clip is None:
-            raise ClipNotFound(argument)
-
-        return cls(id=clip['id'], name=clip['name'], member_id=int(clip['member_id']), filename=clip['filename'],
-                   hash=clip['hash'])
 
 
 def play_checks(ctx: commands.Context) -> bool:
@@ -188,13 +219,13 @@ class SoundBoard(object):
 
     @commands.command()
     async def list(self, ctx: Context) -> None:
-        clips = await ctx.get_clips()
+        clips = await Clip.get_for_user(ctx.author)
 
         if len(clips) > 0:
             paginator = EmbedPaginator()
 
             for clip in clips:
-                paginator.add_line(f'`{clip["name"]}`: {clip["filename"]}')
+                paginator.add_line(f'`{clip.name}`: {clip.filename}')
 
             for page in paginator:
                 await ctx.send_response(page, title=f'Clips for {ctx.author.display_name}')
@@ -203,7 +234,7 @@ class SoundBoard(object):
 
     @commands.command()
     async def add(self, ctx: Context, clip_name: str) -> None:
-        clip = await ctx.get_clip_by_name(clip_name)
+        clip = await Clip.get_by_name(clip_name, ctx.author)
 
         if clip is not None:
             await ctx.send_error(f'A clip already exists with name `{clip_name}`')
@@ -227,18 +258,13 @@ class SoundBoard(object):
         hash_string = file_hash.hexdigest()
         file_path = self.storage_path / hash_string
 
-        clip = await ctx.get_clip_by_hash(hash_string)
-
-        if await ctx.get_clip_by_hash(hash_string) is None:
+        if await Clip.get_by_hash(hash_string) is None:
             file_path.write_bytes(file_buffer.getvalue())
 
-        await ctx.insert_into(table='clips',
-                              values={
-                                  'name': clip_name,
-                                  'member_id': str(ctx.author.id),
-                                  'hash': hash_string,
-                                  'filename': attachment.filename
-                              })
+        await Clip.create(name=clip_name,
+                          member_id=str(ctx.author.id),
+                          hash=hash_string,
+                          filename=attachment.filename)
 
         await ctx.send_response(f'Successfully added `{clip_name}`', delete_after=5)
 
@@ -246,9 +272,9 @@ class SoundBoard(object):
     async def remove(self, ctx: Context, clip: Clip) -> None:
         file_path = clip.get_path(self.storage_path)
 
-        await ctx.delete_from(clip.id, table='clips', where=['id = $1'])
+        await clip.delete()
 
-        if await ctx.get_clip_by_hash(clip.hash) is None:
+        if await Clip.get_by_hash(clip.hash) is None:
             if file_path.exists():
                 file_path.unlink()
 
@@ -256,15 +282,11 @@ class SoundBoard(object):
 
     @commands.command()
     async def rename(self, ctx: Context, clip: Clip, new_name: str) -> None:
-        if await ctx.get_clip_by_name(new_name) is not None:
+        if await Clip.get_by_name(new_name, ctx.author) is not None:
             await ctx.send_error(f'A clip already has the name `{new_name}`')
             return
 
-        await ctx.update(clip.id, new_name, table='clips',
-                         values={
-                             'name': '$2'
-                         },
-                         where=['id = $1'])
+        await clip.update(name=new_name).apply()
         await ctx.send_response(f'Clip `{clip.name}` renamed to `{new_name}`', delete_after=5)
 
     @commands.command()
@@ -272,17 +294,14 @@ class SoundBoard(object):
         if clip_name is None:
             clip_name = clip.name
 
-        if await ctx.get_clip_by_name(clip_name, user=user) is not None:
+        if await Clip.get_by_name(clip_name, user) is not None:
             await ctx.send_error(f'{user} already has a clip named `{clip_name}`')
             return
 
-        await ctx.insert_into(table='clips',
-                              values={
-                                  'name': clip_name,
-                                  'member_id': str(user.id),
-                                  'hash': clip.hash,
-                                  'filename': clip.filename
-                              })
+        await Clip.create(name=clip_name,
+                          member_id=str(user.id),
+                          hash=clip.hash,
+                          filename=clip.filename)
 
         await ctx.send_response(f'Successfully shared `{clip_name or clip.name}` '
                                 f'with {user.display_name}', delete_after=5)
@@ -293,6 +312,8 @@ class Krazon(Bot[Context]):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+
+        self.loop.run_until_complete(db.set_bind(self.config.get('bot', 'db_url')))
 
         if not discord.opus.is_loaded():
             discord.opus.load_opus(self.config.get('opus', 'path'))

@@ -30,6 +30,7 @@ def upgrade():
 
 
 def downgrade():
+    op.drop_index('clips_hash_idx')
     op.drop_index('clips_member_id_name_idx')
     op.drop_index('clips_member_id_idx')
     op.drop_table('clips')

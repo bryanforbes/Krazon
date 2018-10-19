@@ -11,6 +11,7 @@ alembic = "*"
 cchardet = "*"
 uvloop = "*"
 psycopg2 = "*"
+gino = "*"
 
 [dev-packages]
 flake8 = "*"
@@ -21,6 +22,11 @@ pytest-cov = "*"
 pytest-flake8 = "*"
 pytest-mock = "*"
 pytest-mypy = "*"
+sqlalchemy-stubs = {editable = true, ref = "add-sql-typings-2", git = "https://github.com/bryanforbes/sqlalchemy-stubs.git"}
+gino-stubs = {editable = true, ref = "master", git = "https://github.com/bryanforbes/gino-stubs.git"}
 
 [requires]
 python_version = "3.7"
+
+[scripts]
+check = "mypy krazon"

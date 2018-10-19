@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "65b6613ff89c4d5c091773a34f2349965f56924a36bbfb3c5a16ce05799dcdf1"
+            "sha256": "705fcaf467359d45c7ffab75da94d450b4bc07b4e25ecf5b4030f8cfcbb01095"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -16,6 +16,13 @@
         ]
     },
     "default": {
+        "aiocontextvars": {
+            "hashes": [
+                "sha256:530f3054f65c2d5f0cf25700bac33a8c0254da519320a334205e8ec0cdbc6adb",
+                "sha256:eaf193d9ffc5b1942d612ae28d90f1ef5eb59981e41fe38f3863b769eceb301a"
+            ],
+            "version": "==0.2.0"
+        },
         "aiodns": {
             "hashes": [
                 "sha256:99d0652f2c02f73bfa646bf44af82705260a523014576647d7959e664830b26b",
@@ -198,6 +205,14 @@
             ],
             "git": "https://github.com/bryanforbes/discord.py",
             "ref": "8c18bf868e47740e8ae1c2fb2741b3482412efab"
+        },
+        "gino": {
+            "hashes": [
+                "sha256:721f9686d3860dba3264157c302b7d32362b961e0e3570412a56c9bccab505fc",
+                "sha256:bc3d89d5582223cbf61795c0020be6f522c1d8b28da30a8c1e7bb4c397519a15"
+            ],
+            "index": "pypi",
+            "version": "==0.8.0"
         },
         "idna": {
             "hashes": [
@@ -513,6 +528,11 @@
             "index": "pypi",
             "version": "==3.5.0"
         },
+        "gino-stubs": {
+            "editable": true,
+            "git": "https://github.com/bryanforbes/gino-stubs.git",
+            "ref": "b36c90cd30abed5b9a28112b6f68c29ed062d4f2"
+        },
         "mccabe": {
             "hashes": [
                 "sha256:ab8a6258860da4b6677da4bd2fe5dc2c659cff31b3ee4f7f5d64e79735b80d42",
@@ -626,6 +646,11 @@
             ],
             "version": "==1.11.0"
         },
+        "sqlalchemy-stubs": {
+            "editable": true,
+            "git": "https://github.com/bryanforbes/sqlalchemy-stubs.git",
+            "ref": "c73196fac06eb31b8d78b191731283d83d578d14"
+        },
         "typed-ast": {
             "hashes": [
                 "sha256:0948004fa228ae071054f5208840a1e88747a357ec1101c17217bfe99b299d58",
@@ -653,6 +678,14 @@
                 "sha256:f19f2a4f547505fe9072e15f6f4ae714af51b5a681a97f187971f50c283193b6"
             ],
             "version": "==1.1.0"
+        },
+        "typing-extensions": {
+            "hashes": [
+                "sha256:2a6c6e78e291a4b6cbd0bbfd30edc0baaa366de962129506ec8fe06bdec66457",
+                "sha256:51e7b7f3dcabf9ad22eed61490f3b8d23d9922af400fe6656cb08e66656b701f",
+                "sha256:55401f6ed58ade5638eb566615c150ba13624e2f0c1eedd080fc3c1b6cb76f1d"
+            ],
+            "version": "==3.6.6"
         }
     }
 }
